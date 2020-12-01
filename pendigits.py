@@ -11,135 +11,115 @@ import numpy as np
 from openpyxl import load_workbook
 import torch.nn.functional as F
 
-#读取表格中的数据
-workbook = load_workbook('dataset\pendigits.xlsx')
-booksheet = workbook.get_sheet_by_name('Sheet1')
-
-#获取sheet页的行数据
-rows = booksheet.rows
-#获取sheet页的列数据
-columns = booksheet.columns
-
-# 迭代所有的行
-data = np.zeros((10992,17))
-feature = np.zeros((10992,16))
-label = np.zeros((10992))
-
-#把数据分为训练集和测试集分别是45和45
-for i in range(10992):    
-    for j in range(17): 
-        data[i][j] = booksheet.cell(row=i+2, column=j+1).value
-
-#默认对Ndarray的第一维打乱
-#np.random.shuffle(data)  
-      
-#训练数据集
-train_label = data[0:10000,-1]     #[0:50]不包含50
-train_feature = data[0:10000,0:-1]
-#测试数据集
-test_label = data[10000:10992,-1]
-test_feature = data[10000:10992,0:-1]
-
-#对label进行onehot编码
-train_label_oh = np.eye(10)[train_label.astype(int)]
-test_label_oh = np.eye(10)[test_label.astype(int)]
-
-#对feature归一化处理
-train_feature = train_feature / train_feature.max(axis=0)
-test_feature = test_feature / test_feature.max(axis=0)
-
-#训练和测试进行类型转换
-train_feature_t = torch.from_numpy(train_feature)
-train_label_t = torch.from_numpy(train_label_oh)
-
-train_feature_t_f = torch.tensor(train_feature_t,dtype=torch.float32)
-train_label_t_f = torch.tensor(train_label_t,dtype=torch.float32)
-
-test_feature_t = torch.from_numpy(test_feature)
-test_label_t = torch.from_numpy(test_label_oh)
-
-test_feature_t_f = torch.tensor(test_feature_t,dtype=torch.float32)
-test_label_t_f = torch.tensor(test_label_t,dtype=torch.float32)
-
-#######################训练过程##############################
-
-#训练数据个数，输入维度，隐藏层神经元个数，输出维度
-N, D_in, H1, H2, D_out = 10000, 16, 20, 15, 10
-H3, H4 = 20, 10
-
-class ADNet(torch.nn.Module):
+#继承nn.Module构建自己的简单神经网络SNet
+class SNet(torch.nn.Module):
     #构建三层全连接网络
     def __init__(self, D_in, H1, H2, D_out):
-        super(ADNet, self).__init__()
-        # define the model architecture
+        super(SNet, self).__init__()
+        #定义每层的结构
         self.linear1 = torch.nn.Linear(D_in, H1)
         self.linear2 = torch.nn.Linear(H1, H2)
         self.linear3 = torch.nn.Linear(H2, D_out)
         
-    def forward(self, x):
-        y_1 = self.linear1(x).clamp(min=0);
-        y_2 = self.linear2(y_1).clamp(min=0);
-        y_pred = self.linear3(y_2);
-        return y_pred
-
-class DADNet(torch.nn.Module):
-    #构建三层全连接网络
-    def __init__(self, D_in, H1, H2, H3, H4, D_out):
-        super(DADNet, self).__init__()
-        # define the model architecture
-        self.linear1 = torch.nn.Linear(D_in, H1)
-        self.linear2 = torch.nn.Linear(H1, H2)
-        self.linear3 = torch.nn.Linear(H2, H3)
-        self.linear4 = torch.nn.Linear(H3, H4)
-        self.linear5 = torch.nn.Linear(H4, D_out)
-        
+    #使用SNet会自动运行forward（前向传播）方法，方法连接各个隐藏层，并产生非线性
     def forward(self, x):
         y_1 = F.relu(self.linear1(x))
         y_2 = F.relu(self.linear2(y_1))
-        y_3 = F.relu(self.linear3(y_2))
-        y_4 = F.relu(self.linear4(y_3))
-        y_pred = self.linear5(y_4)
-        return y_pred   
+        y_pred = self.linear3(y_2);
+        return y_pred
+
+#python 函数入口
+if __name__ == "__main__":
     
-model = ADNet(D_in, H1, H2, D_out)
-#model = DADNet(D_in, H1, H2, H3, H4, D_out)
-loss_fn = nn.MSELoss(reduction='sum')
-learning_rate = 1e-2
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-
-for t in range(20000): 
-    # if t < 4000:
-    #     learning_rate = 10;
-    # elif t >= 4000 and t< 10000:
-    #     learning_rate = 0.1;
-    # elif t >= 10000:
-    #     learning_rate = 0.01;
-    y_pred = model(train_feature_t_f)  # model.forward()
+    #读取表格中的数据
+    workbook = load_workbook('dataset\pendigits.xlsx')
+    booksheet = workbook.get_sheet_by_name('Sheet1')
     
-    # compute loss
-    loss = loss_fn(y_pred, train_label_t_f)
-    print("训练次数：",t,"\tloss =",loss.item())
+    #初始化Ndarray用于存放表中变量
+    data = np.zeros((10992,17))
     
-    optimizer.zero_grad()
-    #Backward pass
-    loss.backward()
+    #读取sheet1中的数据到numpy的矩阵data中
+    for i in range(10992):    
+        for j in range(17): 
+            data[i][j] = booksheet.cell(row=i+2, column=j+1).value
     
-    optimizer.step()
-
-model.eval()
-
-cnt = 0
-
-test_out = model(test_feature_t_f)
-
-for test_i in range(992):
-    _, test_out_np= torch.max(test_out[test_i],0)
-
-    print("No.",test_i,"\npre:",test_out_np.numpy(),"\nGT:",test_label[test_i])
-    print("****************")
-    if test_out_np == test_label[test_i]:
-        #print("correct")
-        cnt += 1;
+    #默认对Ndarray的第0维打乱（对样本的顺序进行打乱）
+    np.random.shuffle(data)  
+          
+    #分出10000个训练数据
+    train_label = data[0:10000,-1]      #[0:10000]不包含10000，-1是取最后一列
+    train_feature = data[0:10000,0:-1]  #0：-1是从0取到最后第二列
+    #分出992个测试数据
+    test_label = data[10000:10992,-1]
+    test_feature = data[10000:10992,0:-1]
     
-correct_rate = cnt/992.0;
-print("correct_rate:",correct_rate)
+    #对label进行onehot编码（多分类）
+    train_label_oh = np.eye(10)[train_label.astype(int)]
+    test_label_oh = np.eye(10)[test_label.astype(int)]
+    
+    #对feature归一化处理
+    train_feature = train_feature / train_feature.max(axis=0)
+    test_feature = test_feature / test_feature.max(axis=0)
+    
+    #训练和测试进行类型转换
+    train_feature_t = torch.from_numpy(train_feature)   #由numpy转换而来是torch.float64
+    train_label_t = torch.from_numpy(train_label_oh)
+    
+    train_feature_t_f = torch.tensor(train_feature_t,dtype=torch.float32)   #转换为torch.float32，因为要和之后模型预测的类型匹配
+    train_label_t_f = torch.tensor(train_label_t,dtype=torch.float32)
+    
+    test_feature_t = torch.from_numpy(test_feature)
+    test_label_t = torch.from_numpy(test_label_oh)
+    
+    test_feature_t_f = torch.tensor(test_feature_t,dtype=torch.float32)
+    test_label_t_f = torch.tensor(test_label_t,dtype=torch.float32)
+    
+    #######################训练过程##############################
+    
+    #训练数据个数，输入维度，隐藏层神经元个数，输出维度
+    N, D_in, H1, H2, D_out = 10000, 16, 20, 15, 10
+    
+    #实例化一个用于预测的网络
+    model = SNet(D_in, H1, H2, D_out)
+    
+    #定义损失函数，使用均方误差
+    loss_fn = nn.MSELoss(reduction='sum')
+    #设置学习率
+    learning_rate = 1e-3
+    #优化器
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    
+    for t in range(10000): 
+        # 执行model.forward()前向传播
+        y_pred = model(train_feature_t_f)
+        
+        #计算本次迭代的误差
+        loss = loss_fn(y_pred, train_label_t_f)
+        print("训练次数：",t,"\tloss =",loss.item())
+        
+        #清零梯度
+        optimizer.zero_grad()
+        #Backward pass反向传播
+        loss.backward()
+        #更新参数
+        optimizer.step()
+    
+    #######################测试过程##############################
+    model.eval()
+    
+    cnt = 0
+    
+    #输入训练集得到测试结果
+    test_out = model(test_feature_t_f)
+    _, test_out_np= torch.max(test_out,1)   #onehot解码，返回值第一个是最大值（不需要），第二个是最大值的序号    
+    for test_i in range(992):
+        #_, test_out_np= torch.max(test_out[test_i],0)
+    
+        print("No.",test_i,"\npre:",test_out_np.numpy()[test_i],"\nGT:",test_label[test_i])
+        print("****************")
+        if test_out_np.numpy()[test_i] == test_label[test_i]:
+            #print("correct")
+            cnt += 1
+        
+    correct_rate = cnt/992.0
+    print("correct_rate:",correct_rate)
