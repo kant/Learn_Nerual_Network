@@ -16,7 +16,7 @@ class SNet(torch.nn.Module):
     #构建三层全连接网络
     def __init__(self, D_in, H1, H2, D_out):
         super(SNet, self).__init__()
-        #定义每层的结构
+        #定义每层的结构（每层是线性的）
         self.linear1 = torch.nn.Linear(D_in, H1)
         self.linear2 = torch.nn.Linear(H1, H2)
         self.linear3 = torch.nn.Linear(H2, D_out)
@@ -27,6 +27,13 @@ class SNet(torch.nn.Module):
         y_2 = F.relu(self.linear2(y_1))
         y_pred = self.linear3(y_2);
         return y_pred
+    
+#网络向量初始化方法
+def weights_init(m):
+    #如果网络是线性层的话
+    if isinstance(m, (nn.Linear)):
+        nn.init.xavier_normal_(m.weight)    #初始‘w’，用Glorot初始化方法，可以用其他方法代替
+        nn.init.constant_(m.bias, 0.0)  #把偏置‘b’初始化为常数0
 
 #python 函数入口
 if __name__ == "__main__":
@@ -76,8 +83,8 @@ if __name__ == "__main__":
     
     #######################训练过程##############################
     
-    #训练数据个数，输入维度，隐藏层神经元个数，输出维度
-    N, D_in, H1, H2, D_out = 10000, 16, 20, 15, 10
+    #输入维度，隐藏层神经元个数，输出维度
+    D_in, H1, H2, D_out = 16, 20, 15, 10
     
     #实例化一个用于预测的网络
     model = SNet(D_in, H1, H2, D_out)
@@ -88,7 +95,10 @@ if __name__ == "__main__":
     learning_rate = 1e-3
     #优化器
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    #网络参数初始化（上面定义的方法）
+    model.apply(weights_init)
     
+    #10000轮迭代，可更改
     for t in range(10000): 
         # 执行model.forward()前向传播
         y_pred = model(train_feature_t_f)
@@ -105,21 +115,24 @@ if __name__ == "__main__":
         optimizer.step()
     
     #######################测试过程##############################
-    model.eval()
     
-    cnt = 0
+    model.eval()    #保证BN和dropout不发生变化
+    
+    cnt = 0 #初始化正确的计数值
     
     #输入训练集得到测试结果
     test_out = model(test_feature_t_f)
-    _, test_out_np= torch.max(test_out,1)   #onehot解码，返回值第一个是最大值（不需要），第二个是最大值的序号    
+    _, test_out_np= torch.max(test_out,1)   #onehot解码，返回值第一个是最大值（不需要），第二个是最大值的序号
+
+    #迭代922个测试样本输出和统计    
     for test_i in range(992):
-        #_, test_out_np= torch.max(test_out[test_i],0)
     
         print("No.",test_i,"\npre:",test_out_np.numpy()[test_i],"\nGT:",test_label[test_i])
         print("****************")
         if test_out_np.numpy()[test_i] == test_label[test_i]:
             #print("correct")
             cnt += 1
-        
+    
+    #正确率计算
     correct_rate = cnt/992.0
     print("correct_rate:",correct_rate)
