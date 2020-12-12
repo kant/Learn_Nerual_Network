@@ -1,2 +1,2 @@
-# Learn_Nerual_Network
- learn how to construct a simple nerual network
+# Learn_Neural_Network
+ learn how to construct a simple neural network
